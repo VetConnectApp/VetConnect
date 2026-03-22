@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#2E7D32">
+    <title>VetConnect | Rural Telemedicine</title>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div id="offline-badge" class="hidden" data-i18n="offline_badge">Offline Mode - Sync Pending</div>
+    
+    <!-- Login Screen -->
+    <div id="login-container" class="page active">
+        <div class="glass-card">
+            <h1>VetConnect</h1>
+            <p data-i18n="login_subtitle">Rural Livestock Management</p>
+            <form id="login-form">
+                <input type="text" id="email" data-i18n-placeholder="email_ph" placeholder="Email or Phone No." required autocomplete="username">
+                <input type="password" id="password" data-i18n-placeholder="pass_ph" placeholder="Password" required autocomplete="current-password">
+                <button type="submit" class="btn-primary" data-i18n="sign_in">Sign In</button>
+            </form>
+            <p id="login-error" class="error"></p>
+        </div>
+    </div>
+
+    <nav id="app-nav" class="hidden glass-nav">
+        <h2 id="nav-title">VetConnect</h2>
+        <div class="nav-links" style="position: relative;">
+            <!-- Profile Avatar -->
+            <button id="profile-avatar" class="avatar-btn">
+                <span id="avatar-initials">U</span>
+            </button>
+            
+            <!-- Profile Dropdown -->
+            <div id="profile-dropdown" class="dropdown-menu hidden">
+                <div class="dropdown-header">
+                    <strong id="dropdown-role" style="text-transform:capitalize;">Role</strong>
+                    <br>
+                    <span id="dropdown-email" style="font-size:12px; color:#666;">user@vetconnect.com</span>
+                </div>
+                <hr>
+                <button class="dropdown-item" id="menu-my-profile">👤 <span data-i18n="menu_profile">My Profile</span></button>
+                <button class="dropdown-item" id="menu-my-account">⚙️ <span data-i18n="menu_account">My Account</span></button>
+                
+                <div class="dropdown-item theme-switch-wrapper">
+                    <span>🌓 <span data-i18n="menu_theme">Theme (Dark)</span></span>
+                    <label class="switch">
+                        <input type="checkbox" id="theme-toggle">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                
+                <div class="dropdown-item" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>🌐 <span data-i18n="menu_lang">Language</span></span>
+                    <select id="lang-select" style="padding:4px; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer; background:var(--bg-color); color:var(--text-main); border:1px solid #ccc; outline:none;">
+                        <option value="en">EN</option>
+                        <option value="hi">HI</option>
+                        <option value="gu">GU</option>
+                    </select>
+                </div>
+                
+                <hr>
+                <button class="dropdown-item text-danger" id="logout-btn">🚪 <span data-i18n="logout">Logout</span></button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- My Account Settings -->
+    <main id="my-account" class="page hidden">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2 data-i18n="menu_account">My Account</h2>
+            <button class="btn-secondary btn-back-dash" style="padding:8px 15px;">⬅ Back</button>
+        </div>
+        <div class="glass-card">
+            <form id="account-form">
+                <label style="display:block; margin-bottom:5px; color:#555;">Full Name</label>
+                <input type="text" id="acc-name" required style="margin-bottom:15px;">
+                
+                <label style="display:block; margin-bottom:5px; color:#555;">Email Address</label>
+                <input type="email" id="acc-email" required style="margin-bottom:15px;">
+                
+                <label style="display:block; margin-bottom:5px; color:#555;">Phone Number (Used for Login)</label>
+                <input type="tel" id="acc-phone" placeholder="+1234567890" style="margin-bottom:15px;">
+                
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+                    <button type="submit" id="btn-save-acc" class="btn-primary" style="flex:1; margin-right:10px;">Save Changes</button>
+                    <button type="button" id="btn-reset-pw" class="btn-danger" style="flex:1;">Reset Password</button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <!-- My Profile (Role-Based Form) -->
+    <main id="my-profile" class="page hidden">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2 data-i18n="menu_profile">My Profile</h2>
+            <button class="btn-secondary btn-back-dash" style="padding:8px 15px;">⬅ Back</button>
+        </div>
+        <div class="glass-card">
+            <form id="profile-form">
+                <div id="profile-dynamic-fields">
+                    <!-- Javascript populates fields here -->
+                </div>
+                <button type="submit" id="btn-save-prof" class="btn-primary" style="margin-top:20px; width:100%;">Save Profile</button>
+            </form>
+        </div>
+    </main>
+
+    <!-- Vet Portal -->
+    <main id="vet-portal" class="page hidden">
+        <h2 data-i18n="vet_dashboard">Vet Dashboard</h2>
+        
+        <div class="dashboard-layout">
+            <div id="vet-sync-hub" class="glass-card" style="padding: 15px; border-left: 5px solid var(--primary);">
+                <h3 data-i18n="sync_hub">Sync Hub</h3>
+                <p id="sync-status-text" data-i18n="sync_status_synced">All Data Synced 🟢</p>
+            </div>
+
+            <div id="vet-schedule" class="glass-card" style="padding: 15px;">
+                <h3 data-i18n="visit_schedule">Today's Visit Schedule</h3>
+                <ul style="list-style: none; padding: 0; margin-top: 10px;">
+                    <li style="padding: 10px; border-bottom: 1px solid var(--glass-border);">Farm A (John Doe) - 10:00 AM</li>
+                    <li style="padding: 10px;">Farm B (Jane Smith) - 2:00 PM</li>
+                </ul>
+            </div>
+            
+            <div id="vet-search-onboard" class="glass-card" style="padding: 15px;">
+                <h3 data-i18n="search_cattle">Search & Onboard Cattle</h3>
+                <div style="display: flex; gap: 10px; margin-top: 10px; margin-bottom: 15px;">
+                    <input type="text" id="search-tag-id" data-i18n-placeholder="enter_tag" placeholder="Enter Tag ID..." style="flex:1;">
+                    <button id="btn-search-cattle" class="btn-primary" style="white-space:nowrap;" data-i18n="search">Search</button>
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button id="btn-scan-nfc" class="btn-secondary" style="flex:1; padding: 10px 5px;" data-i18n="btn_nfc">📡 NFC</button>
+                    <button id="btn-scan-qr" class="btn-secondary" style="flex:1; padding: 10px 5px;" data-i18n="btn_qr">📷 QR/Barcode</button>
+                </div>
+                <div>
+                    <button id="btn-add-cattle" class="btn-secondary" style="width:100%;" data-i18n="btn_register_cattle">+ Register New Cattle</button>
+                </div>
+            </div>
+        </div>
+        <div id="reader-container" class="hidden">
+            <div style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.9); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
+               <div style="width:100%; max-width:400px; background:black; border-radius:12px; overflow:hidden; display:flex; flex-direction:column; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+                   <div id="qr-reader" style="width:100%; min-height:300px; background:black;"></div>
+                   <button id="btn-close-reader" class="btn-danger" style="width:100%; padding: 15px; font-weight:bold; border:none; font-size:16px;" data-i18n="close_scanner">❌ Close Scanner</button>
+               </div>
+            </div>
+        </div>
+        
+        <div id="vet-recent-treatments">
+           <h3 style="margin-top: 30px;" data-i18n="recent_treatments">Recent Treatments</h3>
+           <div id="vet-treatments-list"></div>
+        </div>
+    </main>
+
+    <!-- Cattle Profile View -->
+    <main id="cattle-profile" class="page hidden">
+        <button id="btn-back-to-vet" class="btn-secondary" style="margin-bottom:20px; width:auto; padding:8px 15px;" data-i18n="back_to_dash">⬅ Back to Dashboard</button>
+        
+        <div class="glass-card" style="padding:15px; margin-bottom:20px; border-left: 5px solid #2E7D32;">
+            <h2 id="profile-tag" style="margin-bottom:10px;" data-i18n="animal_id">Animal ID</h2>
+            <p><strong data-i18n="lbl_nfc">NFC ID:</strong> <span id="profile-nfc"></span></p>
+            <p><strong data-i18n="lbl_barcode">Barcode:</strong> <span id="profile-barcode"></span></p>
+            <p><strong data-i18n="lbl_species">Species:</strong> <span id="profile-species"></span></p>
+            <p><strong data-i18n="lbl_breed">Breed:</strong> <span id="profile-breed"></span></p>
+            <p><strong data-i18n="lbl_owner">Owner:</strong> <span id="profile-farmer"></span></p>
+        </div>
+        
+        <button id="btn-new-log" class="btn-primary" style="margin-bottom:20px; width:100%;" data-i18n="add_treatment_btn">📝 Add New Treatment Log</button>
+
+        <h3 data-i18n="treatment_history">Treatment History</h3>
+        <div id="profile-history-list" class="card-list" style="margin-top:15px;">
+            <p data-i18n="loading_history">Loading history...</p>
+        </div>
+    </main>
+
+    <!-- Admin Portal -->
+    <main id="admin-portal" class="page hidden">
+        <h2>Admin Dashboard</h2>
+        
+        <div class="glass-card" style="margin-bottom: 20px; text-align: center;">
+            <p><strong>Overview:</strong> <span id="admin-stats">Loading stats...</span></p>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-bottom: 20px; overflow-x:auto; padding-bottom:5px;">
+            <button class="btn-secondary" id="filter-pending">Pending</button>
+            <button class="btn-secondary" id="filter-approved">Approved</button>
+            <button class="btn-secondary" id="filter-rejected">Rejected</button>
+            <button class="btn-secondary" id="filter-deletions" style="border-color:#F44336; color:#F44336;">Deletions</button>
+        </div>
+
+        <div class="card-list" id="admin-treatments-list">
+            <!-- Populated via JS -->
+            <p>Loading pending treatments...</p>
+        </div>
+    </main>
+
+    <!-- Farmer Portal -->
+    <main id="farmer-portal" class="page hidden">
+        <h2>Farmer Dashboard</h2>
+        <button id="btn-emergency-sos" class="btn-danger" style="margin-bottom:20px;">🚨 Emergency SOS</button>
+        
+        <h3 style="margin-top:20px;">My Herd's Health</h3>
+        <div class="card-list" id="farmer-herd-list">
+            <!-- Populated via JS -->
+        </div>
+
+        <div id="sos-modal" class="modal hidden">
+            <div class="modal-content glass-card">
+                <h3>Emergency SOS</h3>
+                <form id="sos-form">
+                    <textarea id="sos-note" placeholder="Describe the emergency..." required></textarea>
+                    
+                    <div style="margin: 10px 0;">
+                        <button type="button" id="btn-record-audio" class="btn-secondary" style="background:#ddd; color:#333; width:100%;">🎤 Hold to Record Voice Note</button>
+                        <p id="audio-status" style="font-size:12px; color:var(--primary);"></p>
+                    </div>
+
+                    <input type="file" id="sos-photo" accept="image/*" capture="environment" style="margin-bottom:10px;">
+                    <button type="submit" class="btn-danger">Send SOS</button>
+                    <button type="button" id="btn-close-sos" class="btn-secondary" style="margin-top:10px;">Cancel</button>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <!-- Register New Cattle Modal (Root Level) -->
+    <div id="register-cattle-modal" class="modal hidden">
+        <div class="modal-content glass-card">
+            <h3 data-i18n="register_title">Register Cattle</h3>
+            <form id="register-cattle-form">
+                <label style="display:block; margin-top:10px; font-size:14px; color:#555;" data-i18n="tag_mandatory">Tag Number (MANDATORY):</label>
+                <input type="text" id="reg-tag" required style="margin-bottom:15px;">
+                
+                <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;">
+                    <input type="hidden" id="nfcId" name="nfcId">
+                    <button type="button" id="btn-assign-nfc" class="btn-secondary" style="width:100%; padding:10px;" data-i18n="tap_assign_nfc">📡 Tap & Assign NFC Tag</button>
+                    
+                    <input type="hidden" id="barcodeId" name="barcodeId">
+                    <button type="button" id="btn-assign-qr" class="btn-secondary" style="width:100%; padding:10px;" data-i18n="scan_assign_qr">📷 Scan & Assign Barcode</button>
+                </div>
+
+                <label style="display:block; font-size:14px; color:#555;" data-i18n="lbl_species">Species:</label>
+                <input type="text" id="reg-species" value="Cow" required style="margin-bottom:10px;">
+                
+                <label style="display:block; font-size:14px; color:#555;" data-i18n="lbl_breed">Breed:</label>
+                <input type="text" id="reg-breed" data-i18n-placeholder="ph_breed" placeholder="e.g. Holstein" required style="margin-bottom:10px;">
+
+                <label style="display:block; font-size:14px; color:#555;" data-i18n="lbl_email">Farmer Email (Owner):</label>
+                <input type="email" id="reg-farmer-email" value="farmer@vetconnect.com" required style="margin-bottom:15px;">
+
+                <button type="submit" class="btn-primary" data-i18n="register_submit">Register Animal</button>
+                <button type="button" id="btn-close-register" class="btn-secondary" style="margin-top:10px;" data-i18n="cancel">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Treatment Form Modal (Root Level) -->
+    <div id="treatment-modal" class="modal hidden">
+        <div class="modal-content glass-card">
+            <h3 data-i18n="log_treatment_title">Log Treatment</h3>
+            <form id="treatment-form">
+                <input type="text" id="t-animal-id" readonly style="background:#eee; cursor:not-allowed; border:none; margin-bottom:10px;">
+                <select id="t-urgency" required>
+                    <option value="Routine" data-i18n="opt_routine">Routine</option>
+                    <option value="Urgent" data-i18n="opt_urgent">Urgent</option>
+                    <option value="Surgery" data-i18n="opt_surgery">Surgery</option>
+                </select>
+                <textarea id="t-notes" data-i18n-placeholder="ph_notes" placeholder="Treatment Notes..." required></textarea>
+                
+                <h4 data-i18n="prescription">Prescription</h4>
+                <input type="text" id="t-med" data-i18n-placeholder="ph_medicine" placeholder="Medicine">
+                <input type="text" id="t-dose" data-i18n-placeholder="ph_dose" placeholder="Dosage (e.g., 20ml)">
+                <button type="button" id="btn-add-med" class="btn-secondary" data-i18n="add_medicine">Add Medicine</button>
+                <ul id="t-med-list" style="margin-bottom:10px;"></ul>
+
+                <label style="display:block; margin-top:10px; font-size:14px;" data-i18n="next_due_date">Next Due Date (Optional):</label>
+                <input type="date" id="t-next-date" style="margin-bottom:15px;">
+
+                <button type="submit" class="btn-primary" data-i18n="save_log">Save Log</button>
+                <button type="button" id="btn-close-modal" class="btn-secondary" data-i18n="cancel">Cancel</button>
+            </form>
+        </div>
+    </div>form>
+        </div>
+    </div>
+
+    <!-- Firebase JS (Modular) -->
+    <script type="module" src="js/app.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+</body>
+</html>
