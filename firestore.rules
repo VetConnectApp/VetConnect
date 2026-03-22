@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAdmin() {
+      return request.auth != null && request.auth.token.role == 'admin';
+    }
+    
+    function isVet() {
+      return request.auth != null && request.auth.token.role == 'vet';
+    }
+    
+    function isFarmer() {
+      return request.auth != null && request.auth.token.role == 'farmer';
+    }
+
+    match /users/{userId} {
+      // Note: allow public read to enable phone number mapping querying on unauthenticated login.
+      allow read: if true;
+      allow write: if request.auth.uid == userId || isAdmin();
+    }
+
+    match /animals/{animalId} {
+      allow create, update: if isVet() || isAdmin();
+      allow read: if isVet() || isAdmin() || (isFarmer() && resource.data.farmerId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /treatments/{treatmentId} {
+      allow create: if isVet();
+      // Allow vet to request deletion or update pending status
+      allow update: if isAdmin() || (isVet() && resource.data.vetId == request.auth.uid);
+      allow read: if isVet() || isAdmin() || (isFarmer() && resource.data.farmerId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /emergencies/{emergencyId} {
+      allow create: if isFarmer() && request.resource.data.farmerId == request.auth.uid;
+      allow read, update: if isVet() || isAdmin() || (isFarmer() && resource.data.farmerId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+  }
+}
