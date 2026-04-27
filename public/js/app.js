@@ -6,9 +6,13 @@ import { firebaseConfig } from "../firebase-config.js";
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+
+// Expose Firebase globals for use in IIFEs and inline onclick handlers
+window.auth = auth;
+window._db  = db;
 
 // Enable Offline Persistence
 enableIndexedDbPersistence(db).catch((err) => {
@@ -289,18 +293,21 @@ function showPage(pageId) {
     Object.values(pages).forEach(p => {
         if(p) { p.classList.remove('active'); p.classList.add('hidden'); }
     });
-    if(pages[pageId]) {
-        pages[pageId].classList.remove('hidden');
-        pages[pageId].classList.add('active');
+    // Support both the pages{} key (e.g. 'vet') and raw element IDs (e.g. 'vet-portal')
+    const target = pages[pageId] || document.getElementById(pageId);
+    if(target) {
+        target.classList.remove('hidden');
+        target.classList.add('active');
     }
-    
     if (pageId === 'login') {
         appNav.classList.add('hidden');
     } else {
         appNav.classList.remove('hidden');
     }
 }
+window.showPage = showPage;
 
+// ── My Account click handler ──────────────────────────────
 if(menuMyAccount) {
     menuMyAccount.addEventListener('click', () => {
         if(profileDropdown) profileDropdown.classList.add('hidden');
@@ -308,20 +315,37 @@ if(menuMyAccount) {
         showPage('myAccount');
     });
 }
+
+// ── My Profile click handler → uses the advanced dashboard ─
 if(menuMyProfile) {
     menuMyProfile.addEventListener('click', () => {
         if(profileDropdown) profileDropdown.classList.add('hidden');
-        window.loadProfileData();
-        showPage('myProfile');
+        // showMyProfile is defined in the initMyProfile IIFE
+        if (window.showMyProfile) window.showMyProfile();
+        else showPage('myProfile');
     });
 }
+
 backDashBtns.forEach(btn => btn.addEventListener('click', () => {
     showPage(currentRole);
 }));
 
+// ── loadAccountData: pre-fills #my-account form ───────────
+window.loadAccountData = function() {
+    if (!currentUser) return;
+    const p = currentUserProfile || {};
+    const nameEl  = document.getElementById('acc-name');
+    const emailEl = document.getElementById('acc-email');
+    const phoneEl = document.getElementById('acc-phone');
+    if (nameEl)  nameEl.value  = currentUser.displayName || p.displayName || '';
+    if (emailEl) emailEl.value = currentUser.email || p.email || '';
+    if (phoneEl) phoneEl.value = currentUser.phoneNumber || p.phone || '';
+};
+
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUser = user;
+        window.currentUser = user; // expose for IIFEs
         try {
             const token = await getIdTokenResult(user);
             currentRole = token.claims.role || 'farmer'; // fallback
@@ -331,6 +355,8 @@ onAuthStateChanged(auth, async (user) => {
                 currentUserProfile = ud.exists() ? ud.data() : { email: user.email, role: currentRole };
             } catch(e) { currentUserProfile = { email: user.email, role: currentRole }; }
             
+            window.currentUserProfile = currentUserProfile; // expose for IIFEs
+
             if(dropdownRole) dropdownRole.textContent = currentRole;
             if(dropdownEmail) dropdownEmail.textContent = user.email;
             
@@ -358,6 +384,8 @@ onAuthStateChanged(auth, async (user) => {
     } else {
         currentUser = null;
         currentRole = null;
+        window.currentUser = null;
+        window.currentUserProfile = null;
         showPage('login');
     }
 });
@@ -1278,3 +1306,899 @@ if(profileForm) {
         setTimeout(() => { btnSaveProf.textContent = "Save Profile"; btnSaveProf.disabled = false; }, 2000);
     });
 }
+
+/* ==========================================================
+   SCHEDULE COMMAND CENTER
+   ========================================================== */
+(function initSchedule() {
+
+    // ── Data ─────────────────────────────────────────────────
+    const SCHEDULE_DATA = [
+        {
+            id: 1,
+            time: '08:30 AM',
+            farm: 'Greenfield Farm',
+            owner: 'Ramesh Patel',
+            status: 'completed',
+            address: '12 Rural Road, Anand, Gujarat',
+            distance: '5 miles away',
+            cattle: 12,
+            cattleNote: 'FMD booster shots for all 12 heads',
+            purpose: 'Vaccination Drive',
+            contactPhone: '+91 98765 43210',
+            notes: 'Owner requested certificate copies after vaccination.',
+        },
+        {
+            id: 2,
+            time: '10:00 AM',
+            farm: 'Sunrise Dairy',
+            owner: 'Meena Joshi',
+            status: 'completed',
+            address: '7 Cooperative Lane, Nadiad, Gujarat',
+            distance: '8 miles away',
+            cattle: 6,
+            cattleNote: '2 cows showing reduced milk yield',
+            purpose: 'Routine Check-up',
+            contactPhone: '+91 87654 32109',
+            notes: 'Check feed logs and perform udder health exam.',
+        },
+        {
+            id: 3,
+            time: '12:15 PM',
+            farm: 'Kisan Agro Ranch',
+            owner: 'Dilip Sharma',
+            status: 'pending',
+            address: '3 Highway Rd, Kheda, Gujarat',
+            distance: '14 miles away',
+            cattle: 20,
+            cattleNote: 'Tag 0042 has fever, appetite loss since 2 days',
+            purpose: 'Illness Follow-up',
+            contactPhone: '+91 76543 21098',
+            notes: 'Bring IV fluids and broad-spectrum antibiotics.',
+        },
+        {
+            id: 4,
+            time: '03:00 PM',
+            farm: 'Ram Dairy Co.',
+            owner: 'Suresh Verma',
+            status: 'emergency',
+            address: '91 Village Rd, Vallabh Vidyanagar',
+            distance: '2 miles away',
+            cattle: 3,
+            cattleNote: 'Calving complication — assist needed ASAP',
+            purpose: 'Emergency Delivery',
+            contactPhone: '+91 65432 10987',
+            notes: 'Owner confirmed calf stuck >40 min. Notify clinic immediately.',
+        },
+    ];
+
+    // ── Helpers ───────────────────────────────────────────────
+    const statusLabel = {
+        emergency: '🚨 Emergency',
+        pending:   '⏳ Pending',
+        completed: '✅ Completed',
+        routine:   '🔵 Routine',
+    };
+    const statusClass = {
+        emergency: 'badge-emergency',
+        pending:   'badge-pending',
+        completed: 'badge-completed',
+        routine:   'badge-routine',
+    };
+
+    function buildCard(visit) {
+        const card = document.createElement('div');
+        card.className = 'visit-card';
+        card.dataset.id = visit.id;
+
+        card.innerHTML = `
+            <div class="visit-card-header">
+                <span class="visit-time">${visit.time}</span>
+                <div class="visit-name">
+                    <div style="font-weight:700;">${visit.farm}</div>
+                    <div style="font-size:12px;color:#888;margin-top:2px;">👤 ${visit.owner}</div>
+                </div>
+                <span class="visit-badge ${statusClass[visit.status] || 'badge-routine'}">${statusLabel[visit.status] || visit.status}</span>
+                <span class="visit-arrow">▼</span>
+            </div>
+            <div class="visit-body">
+                <div class="visit-detail-grid">
+                    <div class="visit-detail-item">
+                        <span class="visit-detail-label">📍 Address</span>
+                        <span class="visit-detail-value">${visit.address}</span>
+                        <span style="font-size:12px;color:#888;">${visit.distance}</span>
+                    </div>
+                    <div class="visit-detail-item">
+                        <span class="visit-detail-label">🐄 Cattle</span>
+                        <span class="visit-detail-value">${visit.cattle} head${visit.cattle !== 1 ? 's' : ''}</span>
+                        <span style="font-size:12px;color:#666;">${visit.cattleNote}</span>
+                    </div>
+                    <div class="visit-detail-item">
+                        <span class="visit-detail-label">🩺 Purpose</span>
+                        <span class="visit-detail-value">${visit.purpose}</span>
+                    </div>
+                    <div class="visit-detail-item">
+                        <span class="visit-detail-label">📞 Contact</span>
+                        <span class="visit-detail-value">${visit.contactPhone}</span>
+                    </div>
+                    <div class="visit-detail-item" style="grid-column:1/-1;">
+                        <span class="visit-detail-label">📝 Notes</span>
+                        <span class="visit-detail-value" style="font-weight:500;">${visit.notes}</span>
+                    </div>
+                </div>
+                <div class="visit-actions">
+                    <button class="btn-primary"   onclick="window.showToast('Navigating to ${visit.farm}…')">🗺️ Navigate</button>
+                    <button class="btn-secondary" onclick="window.showToast('Calling ${visit.owner}…')">📞 Call Owner</button>
+                    <button class="btn-secondary" onclick="window.showToast('Treatment log opened')">📋 Log Treatment</button>
+                </div>
+            </div>`;
+
+        // Accordion toggle
+        card.querySelector('.visit-card-header').addEventListener('click', () => {
+            card.classList.toggle('open');
+        });
+
+        return card;
+    }
+
+    // ── State & Render ────────────────────────────────────────
+    let activeFilter = 'all';
+    let searchQuery  = '';
+
+    function renderSchedule() {
+        const list  = document.getElementById('schedule-cards-list');
+        const empty = document.getElementById('schedule-empty');
+        if (!list) return;
+
+        list.innerHTML = '';
+
+        const filtered = SCHEDULE_DATA.filter(v => {
+            const matchFilter = activeFilter === 'all' || v.status === activeFilter;
+            const q = searchQuery.toLowerCase();
+            const matchSearch = !q || v.farm.toLowerCase().includes(q) || v.owner.toLowerCase().includes(q);
+            return matchFilter && matchSearch;
+        });
+
+        if (filtered.length === 0) {
+            empty.classList.remove('hidden');
+        } else {
+            empty.classList.add('hidden');
+            filtered.forEach(v => list.appendChild(buildCard(v)));
+        }
+    }
+
+    // ── Wire Controls ─────────────────────────────────────────
+    function attachScheduleControls() {
+        // Date header
+        const dateEl = document.getElementById('schedule-date');
+        if (dateEl) {
+            const d = new Date();
+            dateEl.textContent = d.toLocaleDateString('en-IN', {
+                weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+            });
+        }
+
+        // Live search
+        const searchEl = document.getElementById('schedule-search');
+        if (searchEl) {
+            searchEl.addEventListener('input', e => {
+                searchQuery = e.target.value;
+                renderSchedule();
+            });
+        }
+
+        // Filter chips
+        const chips = document.querySelectorAll('.sched-chip');
+        chips.forEach(chip => {
+            chip.addEventListener('click', () => {
+                chips.forEach(c => c.classList.remove('active-chip'));
+                chip.classList.add('active-chip');
+                activeFilter = chip.dataset.filter;
+                renderSchedule();
+            });
+        });
+
+        renderSchedule();
+    }
+
+    // ── Boot ──────────────────────────────────────────────────
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attachScheduleControls);
+    } else {
+        attachScheduleControls();
+    }
+
+})();
+
+/* ==========================================================
+   RECENT TREATMENTS ACCORDION
+   ========================================================== */
+(function initTreatments() {
+
+    // ── Mock Data ─────────────────────────────────────────────
+    const TREATMENT_DATA = [
+        {
+            id: 'TX001',
+            date: '22 Mar 2026',
+            tagId: 'GJ-0042',
+            owner: 'Ramesh Patel',
+            farm: 'Greenfield Farm',
+            breed: 'Gir (Cow)',
+            age: '4 years',
+            symptoms: 'High fever (104°F), lethargy, nasal discharge',
+            diagnosis: 'Bovine Respiratory Disease',
+            medicine: 'Oxytetracycline 200mg/mL',
+            dosage: '20 mL IM, once daily for 3 days',
+            nextVisit: '25 Mar 2026',
+            status: 'pending',
+            deletionReason: '',
+        },
+        {
+            id: 'TX002',
+            date: '20 Mar 2026',
+            tagId: 'GJ-0018',
+            owner: 'Meena Joshi',
+            farm: 'Sunrise Dairy',
+            breed: 'Holstein Friesian (Cow)',
+            age: '6 years',
+            symptoms: 'Swollen udder, blood in milk, reduced yield',
+            diagnosis: 'Clinical Mastitis',
+            medicine: 'Amoxicillin + Cloxacillin (Intramammary)',
+            dosage: 'One tube per affected quarter, twice daily × 3 days',
+            nextVisit: '27 Mar 2026',
+            status: 'approved',
+            deletionReason: '',
+        },
+        {
+            id: 'TX003',
+            date: '18 Mar 2026',
+            tagId: 'GJ-0055',
+            owner: 'Dilip Sharma',
+            farm: 'Kisan Agro Ranch',
+            breed: 'Murrah (Buffalo)',
+            age: '5 years',
+            symptoms: 'Blisters on tongue, hooves, drooling, lameness',
+            diagnosis: 'Foot & Mouth Disease (FMD)',
+            medicine: 'Supportive — Antiseptic wash, Vitamin B complex',
+            dosage: 'Hoof wash twice daily; B12 injection 10 mL SC once',
+            nextVisit: '22 Mar 2026',
+            status: 'pending_deletion',
+            deletionReason: 'Duplicate record. Another vet logged same visit (TX003-B).',
+        },
+        {
+            id: 'TX004',
+            date: '15 Mar 2026',
+            tagId: 'GJ-0031',
+            owner: 'Suresh Verma',
+            farm: 'Ram Dairy Co.',
+            breed: 'Sahiwal (Cow)',
+            age: '3 years',
+            symptoms: 'Difficulty calving >40 min, calf stuck',
+            diagnosis: 'Dystocia (Abnormal Parturition)',
+            medicine: 'Oxytocin 10 IU, Calcium borogluconate IV',
+            dosage: 'Oxytocin 2 mL IM stat; Ca 400 mL IV slow drip',
+            nextVisit: '22 Mar 2026',
+            status: 'follow_up',
+            deletionReason: '',
+        },
+    ];
+
+    // ── Status lookup (badge text & CSS class) ────────────────
+    const STATUS_META = {
+        approved:         { label: '✅ Approved',         cls: 'tx-badge-approved'         },
+        pending:          { label: '⏳ Pending Review',   cls: 'tx-badge-pending'          },
+        pending_deletion: { label: '🗑️ Deletion Pending', cls: 'tx-badge-pending_deletion' },
+        follow_up:        { label: '🔔 Follow-Up Due',    cls: 'tx-badge-follow_up'        },
+    };
+
+    function getMeta(status) {
+        return STATUS_META[status] || { label: status, cls: 'tx-badge-pending' };
+    }
+
+    // ── Card builder ──────────────────────────────────────────
+    function buildTxCard(rec) {
+        const meta      = getMeta(rec.status);
+        const isPending = rec.status === 'pending_deletion';
+
+        const card = document.createElement('div');
+        card.className   = 'tx-card';
+        card.dataset.txId = rec.id;
+
+        // deletion zone HTML — differ by state
+        const deletionZoneHTML = isPending
+            ? `<div class="tx-deletion-zone pending">
+                   <p class="tx-detail-label" style="margin:0 0 6px;">🗑️ Deletion Requested — Reason:</p>
+                   <p class="tx-deletion-reason-text">"${rec.deletionReason || 'No reason provided.'}"</p>
+                   <button class="btn-cancel-del tx-cancel-btn" style="width:100%; padding:10px; border-radius:8px;">↩️ Cancel Deletion Request</button>
+               </div>`
+            : `<div class="tx-deletion-zone">
+                   <p class="tx-detail-label" style="margin:0 0 8px;">🗑️ Request Deletion</p>
+                   <textarea class="tx-reason-input" placeholder="Reason for deletion (required)...">${rec.deletionReason}</textarea>
+                   <button class="btn-delete tx-delete-btn" style="width:100%; padding:10px; border-radius:8px;">Request to Delete This Record</button>
+               </div>`;
+
+        card.innerHTML = `
+            <div class="tx-card-header">
+                <div class="tx-date-tag">
+                    <span class="tx-date">${rec.date.split(' ').slice(0,2).join(' ')}</span>
+                    <span class="tx-tag">${rec.tagId}</span>
+                </div>
+                <div class="tx-main">
+                    <div class="tx-diagnosis">${rec.diagnosis}</div>
+                    <div class="tx-owner-mini">👤 ${rec.owner} · ${rec.farm}</div>
+                </div>
+                <span class="tx-badge ${meta.cls}">${meta.label}</span>
+                <span class="tx-arrow">▼</span>
+            </div>
+            <div class="tx-body">
+                <div class="tx-detail-grid">
+                    <div class="tx-detail-item">
+                        <span class="tx-detail-label">👤 Owner</span>
+                        <span class="tx-detail-value">${rec.owner}</span>
+                        <span style="font-size:12px;color:#888;">${rec.farm}</span>
+                    </div>
+                    <div class="tx-detail-item">
+                        <span class="tx-detail-label">🐄 Cattle</span>
+                        <span class="tx-detail-value">${rec.breed}</span>
+                        <span style="font-size:12px;color:#888;">Age: ${rec.age}</span>
+                    </div>
+                    <div class="tx-detail-item">
+                        <span class="tx-detail-label">🌡️ Symptoms</span>
+                        <span class="tx-detail-value" style="font-weight:500;font-size:13px;">${rec.symptoms}</span>
+                    </div>
+                    <div class="tx-detail-item">
+                        <span class="tx-detail-label">💊 Medicine</span>
+                        <span class="tx-detail-value">${rec.medicine}</span>
+                        <span style="font-size:12px;color:#888;">Dose: ${rec.dosage}</span>
+                    </div>
+                    <div class="tx-detail-item">
+                        <span class="tx-detail-label">📅 Next Visit</span>
+                        <span class="tx-detail-value">${rec.nextVisit}</span>
+                    </div>
+                    <div class="tx-detail-item">
+                        <span class="tx-detail-label">🆔 Record ID</span>
+                        <span class="tx-detail-value">${rec.id}</span>
+                    </div>
+                </div>
+
+                <!-- primary actions -->
+                <div class="tx-actions">
+                    <button class="btn-secondary" onclick="window.showToast('Opening editor for ${rec.id}…')">✏️ Edit Record</button>
+                    <button class="btn-secondary" onclick="window.showToast('Exporting ${rec.id} to PDF…')">📄 Print / Export</button>
+                </div>
+
+                <!-- deletion zone -->
+                ${deletionZoneHTML}
+            </div>`;
+
+        // Accordion toggle (only header, not buttons inside)
+        card.querySelector('.tx-card-header').addEventListener('click', () => {
+            card.classList.toggle('open');
+        });
+
+        // Delete request button
+        const deleteBtn = card.querySelector('.tx-delete-btn');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => requestDelete(rec, card));
+        }
+
+        // Cancel deletion button
+        const cancelBtn = card.querySelector('.tx-cancel-btn');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => cancelDelete(rec, card));
+        }
+
+        return card;
+    }
+
+    // ── State mutation helpers ────────────────────────────────
+    function requestDelete(rec, card) {
+        const textarea = card.querySelector('.tx-reason-input');
+        const reason   = textarea ? textarea.value.trim() : '';
+        if (!reason) {
+            if (window.showToast) window.showToast('⚠️ Please enter a reason before requesting deletion.');
+            else alert('Please enter a reason before requesting deletion.');
+            return;
+        }
+        rec.deletionReason = reason;
+        rec.status         = 'pending_deletion';
+        refreshCard(rec, card);
+        if (window.showToast) window.showToast('Deletion request submitted for ' + rec.id);
+    }
+
+    function cancelDelete(rec, card) {
+        rec.status         = 'pending';   // revert to previous sensible state
+        rec.deletionReason = '';
+        refreshCard(rec, card);
+        if (window.showToast) window.showToast('Deletion request cancelled for ' + rec.id);
+    }
+
+    function refreshCard(rec, card) {
+        const wasOpen = card.classList.contains('open');
+        const fresh   = buildTxCard(rec);
+        if (wasOpen) fresh.classList.add('open');
+        card.replaceWith(fresh);
+    }
+
+    // ── Render all ────────────────────────────────────────────
+    function renderTreatments() {
+        const list  = document.getElementById('tx-list');
+        const badge = document.getElementById('tx-count-badge');
+        if (!list) return;
+
+        list.innerHTML = '';
+        TREATMENT_DATA.forEach(rec => list.appendChild(buildTxCard(rec)));
+
+        if (badge) badge.textContent = TREATMENT_DATA.length + ' records';
+    }
+
+    // ── Boot ──────────────────────────────────────────────────
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', renderTreatments);
+    } else {
+        renderTreatments();
+    }
+
+})();
+
+/* ==========================================================
+   MY PROFILE & SETTINGS — JS ENGINE
+   ========================================================== */
+(function initMyProfile() {
+
+    // ── Populate fields from Firebase on page open ────────────
+    window.showMyProfile = function () {
+        window.showPage('my-profile');
+        populateProfilePage();
+    };
+
+    function populateProfilePage() {
+        if (!window.currentUser) return;
+        const u = window.currentUser;
+        const p = window.currentUserProfile || {};
+
+        // Avatar
+        const circle = document.getElementById('prof-avatar-circle');
+        if (circle) {
+            if (u.photoURL) {
+                circle.innerHTML = `<img src="${u.photoURL}" alt="avatar">`;
+            } else {
+                const roleIcons = { vet: '🩺', farmer: '🚜', admin: '🛡️' };
+                circle.textContent = roleIcons[p.role] || '👤';
+            }
+        }
+
+        // Display name
+        const nameEl = document.getElementById('prof-display-name');
+        if (nameEl) nameEl.textContent = u.displayName || p.displayName || 'My Profile';
+
+        // Personal info
+        const fullName = (u.displayName || '').split(' ');
+        setVal('prof-first-name', p.firstName || fullName[0] || '');
+        setVal('prof-last-name',  p.lastName  || fullName.slice(1).join(' ') || '');
+        setVal('prof-dob',        p.dob  || '');
+        setVal('prof-gender',     p.gender || '');
+        if (p.dob) calcAge();
+
+        // Show proper role card
+        const role = p.role || window.currentRole || 'vet';
+        ['vet', 'farmer', 'admin'].forEach(r => {
+            const el = document.getElementById(`prof-card-${r}`);
+            if (el) el.classList.toggle('hidden', r !== role);
+        });
+
+        // Professional / Role-specific
+        if (role === 'vet') {
+            setVal('prof-license',         p.licenseNumber   || '');
+            setVal('prof-specialization',  p.specialization  || '');
+            setVal('prof-degrees',         p.degrees         || '');
+            setVal('prof-experience',      p.experience      || '');
+            setVal('prof-clinic',          p.clinicName      || '');
+        } else if (role === 'farmer') {
+            setVal('prof-farm-name',       p.farmName        || '');
+            setVal('prof-farm-area',       p.farmArea        || '');
+            setVal('prof-farm-size',       p.farmSize        || '');
+            setVal('prof-livestock-type',  p.livestockType   || '');
+            setVal('prof-primary-vet',     p.primaryVet      || '');
+        } else if (role === 'admin') {
+            setVal('prof-admin-id',        p.adminId         || '');
+            setVal('prof-admin-role',      p.adminRoleLevel  || '');
+            setVal('prof-admin-region',    p.adminRegion     || '');
+            setVal('prof-admin-dept',      p.adminDept       || '');
+        }
+
+        // Contact
+        setVal('prof-email',        u.email  || p.email || '');
+        setVal('prof-mobile',       u.phoneNumber || p.phone || '');
+        setVal('prof-clinic-phone', p.clinicPhone || '');
+        setVal('prof-address',      p.address || '');
+
+        // Settings
+        setCheck('toggle-email-alerts', p.notifyEmail !== false);
+        setCheck('toggle-sms-alerts',   p.notifySms   === true);
+        setCheck('toggle-2fa',          p['2fa']      === true);
+
+        // Language
+        const savedLang = localStorage.getItem('vetconnect_lang') || 'en';
+        const langEl = document.getElementById('prof-lang-select');
+        if (langEl) langEl.value = savedLang;
+    }
+
+    function setVal(id, val) {
+        const el = document.getElementById(id);
+        if (el && val !== undefined && val !== null) el.value = val;
+    }
+    function setCheck(id, bool) {
+        const el = document.getElementById(id);
+        if (el) el.checked = !!bool;
+    }
+
+    // ── Photo preview ─────────────────────────────────────────
+    const fileInput = document.getElementById('prof-avatar-file');
+    if (fileInput) {
+        fileInput.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+                const circle = document.getElementById('prof-avatar-circle');
+                if (circle) circle.innerHTML = `<img src="${ev.target.result}" alt="avatar">`;
+            };
+            reader.readAsDataURL(file);
+            window.showToast('Photo selected — will upload on Save.');
+        });
+    }
+
+    // ── Age auto-calculate ────────────────────────────────────
+    window.calcAge = function () {
+        const dob = document.getElementById('prof-dob');
+        const age = document.getElementById('prof-age');
+        if (!dob || !age || !dob.value) return;
+        const today = new Date();
+        const birth  = new Date(dob.value);
+        let years = today.getFullYear() - birth.getFullYear();
+        const m = today.getMonth() - birth.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) years--;
+        age.value = years >= 0 ? `${years} years` : '—';
+    };
+
+
+
+    // ── Save Profile ──────────────────────────────────────────
+    window.saveProfile = async function () {
+        const btn = document.querySelector('.prof-save-btn');
+        if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+
+        try {
+            if (!window.currentUser) throw new Error('Not logged in.');
+
+            const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js');
+
+            const payload = {
+                firstName:       getVal('prof-first-name'),
+                lastName:        getVal('prof-last-name'),
+                displayName:     `${getVal('prof-first-name')} ${getVal('prof-last-name')}`.trim(),
+                dob:             getVal('prof-dob'),
+                gender:          getVal('prof-gender'),
+                // Vet fields
+                licenseNumber:   getVal('prof-license'),
+                specialization:  getVal('prof-specialization'),
+                degrees:         getVal('prof-degrees'),
+                experience:      getVal('prof-experience'),
+                clinicName:      getVal('prof-clinic'),
+                // Farmer fields
+                farmName:        getVal('prof-farm-name'),
+                farmArea:        getVal('prof-farm-area'),
+                livestockType:   getVal('prof-livestock-type'),
+                farmSize:        getVal('prof-farm-size'),
+                primaryVet:      getVal('prof-primary-vet'),
+                // Admin fields
+                adminId:         getVal('prof-admin-id'),
+                adminRoleLevel:  getVal('prof-admin-role'),
+                adminRegion:     getVal('prof-admin-region'),
+                adminDept:       getVal('prof-admin-dept'),
+                email:           getVal('prof-email'),
+                phone:           getVal('prof-mobile'),
+                clinicPhone:     getVal('prof-clinic-phone'),
+                address:         getVal('prof-address'),
+                notifyEmail:     document.getElementById('toggle-email-alerts')?.checked ?? true,
+                notifySms:       document.getElementById('toggle-sms-alerts')?.checked ?? false,
+                '2fa':           document.getElementById('toggle-2fa')?.checked ?? false,
+                updatedAt:       new Date().toISOString(),
+            };
+
+            await setDoc(doc(window._db, 'users', window.currentUser.uid), payload, { merge: true });
+            window.currentUserProfile = { ...window.currentUserProfile, ...payload };
+
+            // Update header display name
+            const nameEl = document.getElementById('prof-display-name');
+            if (nameEl) nameEl.textContent = payload.displayName || window.currentUser.displayName;
+
+            showProfileSuccess();
+        } catch (err) {
+            if (window.showToast) window.showToast('❌ Save failed: ' + err.message);
+        } finally {
+            if (btn) { btn.textContent = '💾 Save Profile'; btn.disabled = false; }
+        }
+    };
+
+    function getVal(id) {
+        return document.getElementById(id)?.value?.trim() || '';
+    }
+
+    function showProfileSuccess() {
+        // Green banner toast
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+            background:#2D6A4F; color:#fff; padding:14px 28px; border-radius:12px;
+            font-size:15px; font-weight:700; z-index:99999;
+            box-shadow:0 4px 20px rgba(45,106,79,0.4);
+            display:flex; align-items:center; gap:10px;
+            animation: fadeInUp 0.3s ease;
+        `;
+        toast.innerHTML = '✅ Profile saved successfully!';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3500);
+    }
+
+
+
+})();
+
+/* ==========================================================
+   MY ACCOUNT & SECURITY — JS ENGINE
+   ========================================================== */
+(function initMyAccount() {
+
+    let _pendingDocId = null; // track the pending request Firestore doc ID
+
+    // ── Entry point called by the dropdown click handler ─────
+    window.loadAccountData = function () {
+        populateLockedCredentials();
+        checkPendingRequest();
+    };
+
+    // ── Card 1: Fill locked credential rows ──────────────────
+    function populateLockedCredentials() {
+        const u = window.currentUser;
+        const p = window.currentUserProfile || {};
+        if (!u) return;
+
+        const fullName = u.displayName || p.displayName
+            || [p.firstName, p.lastName].filter(Boolean).join(' ')
+            || '—';
+        const email  = u.email  || p.email  || '—';
+        const phone  = u.phoneNumber || p.phone || null;
+
+        setText('acct-display-name',  fullName);
+        setText('acct-display-email', email);
+        setText('acct-display-phone', phone || 'Not set');
+
+        const phoneBadge = document.getElementById('acct-phone-badge');
+        if (phoneBadge) {
+            if (phone) {
+                phoneBadge.textContent = '✔ Active';
+                phoneBadge.className = 'acct-verified-badge';
+            } else {
+                phoneBadge.textContent = '— Not set';
+                phoneBadge.className = 'acct-verified-badge acct-badge-gray';
+            }
+        }
+    }
+
+    // ── Card 2: Check if a pending request exists ─────────────
+    async function checkPendingRequest() {
+        if (!window.currentUser || !window._db) return;
+        try {
+            const { collection, query, where, getDocs }
+                = await import('https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js');
+
+            const q = query(
+                collection(window._db, 'update_requests'),
+                where('uid', '==', window.currentUser.uid),
+                where('status', '==', 'pending')
+            );
+            const snap = await getDocs(q);
+
+            if (!snap.empty) {
+                const reqDoc = snap.docs[0];
+                _pendingDocId = reqDoc.id;
+                const data = reqDoc.data();
+                showPendingAlert(data);
+            } else {
+                _pendingDocId = null;
+                hidePendingAlert();
+            }
+        } catch (e) {
+            console.warn('Could not check pending requests:', e);
+        }
+    }
+
+    function showPendingAlert(data) {
+        const alert   = document.getElementById('acct-pending-alert');
+        const form    = document.getElementById('acct-request-form');
+        const desc    = document.getElementById('acct-pending-desc');
+        const dateEl  = document.getElementById('acct-pending-date');
+        if (!alert) return;
+
+        // Build description
+        const parts = [];
+        if (data.newEmail) parts.push(`Email → ${data.newEmail}`);
+        if (data.newPhone) parts.push(`Phone → ${data.newPhone}`);
+        desc.textContent  = parts.length ? `Requested: ${parts.join(' | ')}` : 'Credential change pending.';
+        dateEl.textContent = data.submittedAt
+            ? new Date(data.submittedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+            : '—';
+
+        alert.classList.remove('hidden');
+        if (form) form.classList.add('pending-mode');
+    }
+
+    function hidePendingAlert() {
+        const alert = document.getElementById('acct-pending-alert');
+        const form  = document.getElementById('acct-request-form');
+        if (alert) alert.classList.add('hidden');
+        if (form)  form.classList.remove('pending-mode');
+    }
+
+    // ── Card 2: Submit change request ─────────────────────────
+    window.submitCredentialRequest = async function () {
+        const newEmail  = getVal('acct-new-email');
+        const newPhone  = getVal('acct-new-phone');
+        const reason    = getVal('acct-change-reason');
+
+        if (!newEmail && !newPhone) {
+            return window.showToast('⚠️ Please enter a new email or phone number to request a change.');
+        }
+        if (!reason) {
+            return window.showToast('⚠️ A reason for the change is required.');
+        }
+        if (newEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+            return window.showToast('⚠️ Please enter a valid email address.');
+        }
+
+        const btn = document.getElementById('btn-submit-req');
+        if (btn) { btn.textContent = 'Submitting…'; btn.disabled = true; }
+
+        try {
+            const { collection, addDoc }
+                = await import('https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js');
+
+            const requestData = {
+                uid:         window.currentUser.uid,
+                userEmail:   window.currentUser.email,
+                newEmail:    newEmail || null,
+                newPhone:    newPhone || null,
+                reason:      reason,
+                status:      'pending',
+                submittedAt: new Date().toISOString(),
+            };
+
+            const docRef = await addDoc(collection(window._db, 'update_requests'), requestData);
+            _pendingDocId = docRef.id;
+
+            // Clear inputs
+            setVal('acct-new-email', '');
+            setVal('acct-new-phone', '');
+            setVal('acct-change-reason', '');
+
+            showPendingAlert(requestData);
+            window.showToast('✅ Change request submitted! Awaiting admin approval.');
+        } catch (err) {
+            window.showToast('❌ Failed to submit: ' + err.message);
+        } finally {
+            if (btn) { btn.textContent = '📤 Submit Change Request'; btn.disabled = false; }
+        }
+    };
+
+    // ── Card 2: Cancel pending request ───────────────────────
+    window.cancelCredentialRequest = async function () {
+        if (!_pendingDocId) return;
+        if (!confirm('Are you sure you want to cancel your pending credential change request?')) return;
+
+        try {
+            const { doc, deleteDoc }
+                = await import('https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js');
+
+            await deleteDoc(doc(window._db, 'update_requests', _pendingDocId));
+            _pendingDocId = null;
+            hidePendingAlert();
+            window.showToast('🗑️ Request cancelled.');
+        } catch (err) {
+            window.showToast('❌ Could not cancel: ' + err.message);
+        }
+    };
+
+    // ── Card 3: Change Password ───────────────────────────────
+    window.acctChangePassword = async function () {
+        const current  = getVal('acct-pwd-current');
+        const newPwd   = getVal('acct-pwd-new');
+        const confirm  = getVal('acct-pwd-confirm');
+
+        if (!current || !newPwd || !confirm) {
+            return window.showToast('⚠️ Please fill all password fields.');
+        }
+        if (newPwd !== confirm) {
+            return window.showToast('⚠️ New passwords do not match.');
+        }
+        if (newPwd.length < 8) {
+            return window.showToast('⚠️ Password must be at least 8 characters.');
+        }
+
+        const btn = document.querySelector('.acct-update-pw-btn');
+        if (btn) { btn.textContent = 'Updating…'; btn.disabled = true; }
+
+        try {
+            const { EmailAuthProvider, reauthenticateWithCredential, updatePassword }
+                = await import('https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js');
+
+            const cred = EmailAuthProvider.credential(window.currentUser.email, current);
+            await reauthenticateWithCredential(window.currentUser, cred);
+            await updatePassword(window.currentUser, newPwd);
+
+            // Clear fields
+            ['acct-pwd-current', 'acct-pwd-new', 'acct-pwd-confirm'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            // Reset strength meter
+            checkPwdStrength('');
+
+            // Styled success toast
+            const toast = document.createElement('div');
+            toast.style.cssText = `position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+                background:#2D6A4F;color:#fff;padding:14px 28px;border-radius:12px;
+                font-size:15px;font-weight:700;z-index:99999;
+                box-shadow:0 4px 20px rgba(45,106,79,0.4);`;
+            toast.textContent = '🔒 Password updated successfully!';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3500);
+        } catch (err) {
+            const msg = err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential'
+                ? 'Current password is incorrect.'
+                : err.message;
+            window.showToast('❌ ' + msg);
+        } finally {
+            if (btn) { btn.textContent = '🔒 Update Password'; btn.disabled = false; }
+        }
+    };
+
+    // ── Password visibility toggle ────────────────────────────
+    window.togglePwdVis = function (inputId, btn) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        if (input.type === 'password') {
+            input.type = 'text';
+            btn.textContent = '🙈';
+        } else {
+            input.type = 'password';
+            btn.textContent = '👁';
+        }
+    };
+
+    // ── Password strength meter ───────────────────────────────
+    window.checkPwdStrength = function (val) {
+        const bar   = document.getElementById('acct-strength-bar');
+        const label = document.getElementById('acct-strength-label');
+        if (!bar || !label) return;
+
+        let score = 0;
+        if (val.length >= 8)                       score++;
+        if (/[A-Z]/.test(val))                     score++;
+        if (/[0-9]/.test(val))                     score++;
+        if (/[^A-Za-z0-9]/.test(val))             score++;
+
+        bar.className = 'acct-strength-bar' + (val ? ` strength-${score}` : '');
+        const labels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+        label.textContent = val ? labels[score] || '' : '';
+        const colors = ['', '#f44336', '#ff9800', '#ffc107', '#4caf50'];
+        label.style.color = colors[score] || '#999';
+    };
+
+    // ── Helpers ───────────────────────────────────────────────
+    function getVal(id) { return (document.getElementById(id)?.value || '').trim(); }
+    function setVal(id, v) { const e = document.getElementById(id); if(e) e.value = v; }
+    function setText(id, t) { const e = document.getElementById(id); if(e) e.textContent = t; }
+
+})();

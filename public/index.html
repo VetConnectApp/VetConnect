@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#2E7D32">
     <title>VetConnect | Rural Telemedicine</title>
+    <!-- FORCE CACHE BUST: clears stale SW caches -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          regs.forEach(r => r.unregister());
+        });
+        caches.keys().then(keys => {
+          keys.forEach(k => {
+            if (!k.includes('vetconnect-v27')) caches.delete(k);
+          });
+        });
+      }
+    </script>
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
@@ -69,46 +82,131 @@
         </div>
     </nav>
 
-    <!-- My Account Settings -->
+    <!-- ══════════════════════════════════════════
+         MY ACCOUNT & SECURITY PAGE
+    ══════════════════════════════════════════ -->
     <main id="my-account" class="page hidden">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-            <h2 data-i18n="menu_account">My Account</h2>
-            <button class="btn-secondary btn-back-dash" style="padding:8px 15px;">⬅ Back</button>
+
+        <!-- Page Header -->
+        <div class="acct-page-header">
+            <div>
+                <h2 style="margin:0; font-size:20px; font-weight:800; color:var(--primary);">⚙️ My Account &amp; Security</h2>
+                <p style="margin:4px 0 0; font-size:12px; color:#999;">Manage your login credentials and security settings</p>
+            </div>
+            <button class="btn-secondary btn-back-dash" style="padding:9px 20px; font-size:13px;">⬅ Back</button>
         </div>
-        <div class="glass-card">
-            <form id="account-form">
-                <label style="display:block; margin-bottom:5px; color:#555;">Full Name</label>
-                <input type="text" id="acc-name" required style="margin-bottom:15px;">
-                
-                <label style="display:block; margin-bottom:5px; color:#555;">Email Address</label>
-                <input type="email" id="acc-email" required style="margin-bottom:15px;">
-                
-                <label style="display:block; margin-bottom:5px; color:#555;">Phone Number (Used for Login)</label>
-                <input type="tel" id="acc-phone" placeholder="+1234567890" style="margin-bottom:15px;">
-                
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
-                    <button type="submit" id="btn-save-acc" class="btn-primary" style="flex:1; margin-right:10px;">Save Changes</button>
-                    <button type="button" id="btn-reset-pw" class="btn-danger" style="flex:1;">Reset Password</button>
+
+        <!-- ── Card 1: Active Credentials (Read-Only) ────── -->
+        <div class="glass-card acct-card">
+            <div class="acct-card-header">🔐 Active Login Credentials</div>
+            <p class="acct-card-sub">These are your verified, active login details. To change them, use the request form below.</p>
+
+            <div class="acct-cred-row">
+                <div class="acct-cred-icon">👤</div>
+                <div class="acct-cred-body">
+                    <span class="acct-cred-label">Full Name</span>
+                    <span class="acct-cred-value" id="acct-display-name">—</span>
                 </div>
-            </form>
+                <span class="acct-verified-badge">✔ Active</span>
+            </div>
+
+            <div class="acct-cred-row">
+                <div class="acct-cred-icon">✉️</div>
+                <div class="acct-cred-body">
+                    <span class="acct-cred-label">Primary Email</span>
+                    <span class="acct-cred-value" id="acct-display-email">—</span>
+                </div>
+                <span class="acct-verified-badge">✔ Verified</span>
+            </div>
+
+            <div class="acct-cred-row" style="border-bottom:none;">
+                <div class="acct-cred-icon">📱</div>
+                <div class="acct-cred-body">
+                    <span class="acct-cred-label">Login Phone</span>
+                    <span class="acct-cred-value" id="acct-display-phone">Not set</span>
+                </div>
+                <span class="acct-verified-badge acct-badge-gray" id="acct-phone-badge">— Not set</span>
+            </div>
         </div>
+
+        <!-- ── Card 2: Request Credential Change ────────── -->
+        <div class="glass-card acct-card">
+            <div class="acct-card-header">📝 Request Credential Change</div>
+            <p class="acct-card-sub">Changes to your email or phone require admin approval. Your current credentials remain active until approved.</p>
+
+            <!-- Pending Alert (shown dynamically) -->
+            <div id="acct-pending-alert" class="acct-pending-alert hidden">
+                <div class="acct-pending-icon">⏳</div>
+                <div class="acct-pending-body">
+                    <strong>Pending Admin Approval</strong>
+                    <p id="acct-pending-desc" style="margin:4px 0 0; font-size:13px; color:#795548;"></p>
+                    <p style="margin:4px 0 0; font-size:11px; color:#a0826d;">Submitted: <span id="acct-pending-date">—</span></p>
+                </div>
+                <button class="acct-cancel-req-btn" id="btn-cancel-req" onclick="cancelCredentialRequest()">✕ Cancel Request</button>
+            </div>
+
+            <!-- Request Form (hidden when pending) -->
+            <div id="acct-request-form">
+                <div class="acct-field-group">
+                    <label class="acct-label">New Email Address <span style="color:#aaa; font-weight:400;">(optional)</span></label>
+                    <input type="email" id="acct-new-email" class="acct-input" placeholder="Enter new email address">
+                </div>
+                <div class="acct-field-group">
+                    <label class="acct-label">New Phone Number <span style="color:#aaa; font-weight:400;">(optional)</span></label>
+                    <input type="tel" id="acct-new-phone" class="acct-input" placeholder="+91 XXXXX XXXXX">
+                </div>
+                <div class="acct-field-group">
+                    <label class="acct-label">Reason for Change <span style="color:#c62828;">*</span></label>
+                    <textarea id="acct-change-reason" class="acct-input acct-textarea" rows="2" placeholder="Briefly explain why you need this change..."></textarea>
+                </div>
+                <button class="acct-request-btn" id="btn-submit-req" onclick="submitCredentialRequest()">
+                    📤 Submit Change Request
+                </button>
+            </div>
+        </div>
+
+        <!-- ── Card 3: Advanced Security (Password) ──────── -->
+        <div class="glass-card acct-card" style="margin-bottom:32px;">
+            <div class="acct-card-header">🔑 Change Password</div>
+            <p class="acct-card-sub">Your password must be at least 8 characters. You'll be asked to re-enter your current password for security.</p>
+
+            <div class="acct-form-grid">
+                <div class="acct-field-group" style="grid-column:1/-1;">
+                    <label class="acct-label">Current Password</label>
+                    <div class="acct-pw-wrap">
+                        <input type="password" id="acct-pwd-current" class="acct-input" placeholder="Enter current password">
+                        <button type="button" class="acct-pw-eye" onclick="togglePwdVis('acct-pwd-current', this)">👁</button>
+                    </div>
+                </div>
+                <div class="acct-field-group">
+                    <label class="acct-label">New Password</label>
+                    <div class="acct-pw-wrap">
+                        <input type="password" id="acct-pwd-new" class="acct-input" placeholder="New password" oninput="checkPwdStrength(this.value)">
+                        <button type="button" class="acct-pw-eye" onclick="togglePwdVis('acct-pwd-new', this)">👁</button>
+                    </div>
+                    <!-- Strength meter -->
+                    <div class="acct-strength-bar" id="acct-strength-bar">
+                        <span></span><span></span><span></span><span></span>
+                    </div>
+                    <span class="acct-strength-label" id="acct-strength-label"></span>
+                </div>
+                <div class="acct-field-group">
+                    <label class="acct-label">Confirm New Password</label>
+                    <div class="acct-pw-wrap">
+                        <input type="password" id="acct-pwd-confirm" class="acct-input" placeholder="Repeat new password">
+                        <button type="button" class="acct-pw-eye" onclick="togglePwdVis('acct-pwd-confirm', this)">👁</button>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn-primary acct-update-pw-btn" onclick="acctChangePassword()">
+                🔒 Update Password
+            </button>
+        </div>
+
     </main>
 
-    <!-- My Profile (Role-Based Form) -->
-    <main id="my-profile" class="page hidden">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-            <h2 data-i18n="menu_profile">My Profile</h2>
-            <button class="btn-secondary btn-back-dash" style="padding:8px 15px;">⬅ Back</button>
-        </div>
-        <div class="glass-card">
-            <form id="profile-form">
-                <div id="profile-dynamic-fields">
-                    <!-- Javascript populates fields here -->
-                </div>
-                <button type="submit" id="btn-save-prof" class="btn-primary" style="margin-top:20px; width:100%;">Save Profile</button>
-            </form>
-        </div>
-    </main>
+
 
     <!-- Vet Portal -->
     <main id="vet-portal" class="page hidden">
@@ -120,13 +218,31 @@
                 <p id="sync-status-text" data-i18n="sync_status_synced">All Data Synced 🟢</p>
             </div>
 
-            <div id="vet-schedule" class="glass-card" style="padding: 15px;">
-                <h3 data-i18n="visit_schedule">Today's Visit Schedule</h3>
-                <ul style="list-style: none; padding: 0; margin-top: 10px;">
-                    <li style="padding: 10px; border-bottom: 1px solid var(--glass-border);">Farm A (John Doe) - 10:00 AM</li>
-                    <li style="padding: 10px;">Farm B (Jane Smith) - 2:00 PM</li>
-                </ul>
+            <div id="vet-schedule" class="glass-card" style="padding: 20px; grid-column: 1 / -1;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                    <h3 data-i18n="visit_schedule" style="font-size:18px; font-weight:700; color:var(--primary); margin:0;">📅 Today's Visit Schedule</h3>
+                    <span id="schedule-date" style="font-size:13px; color:#888; font-weight:500;"></span>
+                </div>
+
+                <!-- Search Bar -->
+                <div style="position:relative; margin-bottom:14px;">
+                    <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:16px; pointer-events:none;">🔍</span>
+                    <input type="text" id="schedule-search" placeholder="Search farm or owner..." style="width:100%; padding:10px 12px 10px 38px; border-radius:10px; border:1px solid #e0e0e0; font-size:14px; background:#f8f9fa; min-height:44px; box-sizing:border-box;">
+                </div>
+
+                <!-- Filter Chips -->
+                <div id="schedule-filters" style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+                    <button class="sched-chip active-chip" data-filter="all">All</button>
+                    <button class="sched-chip" data-filter="emergency" style="--chip-color:#ef5350;">🚨 Emergency</button>
+                    <button class="sched-chip" data-filter="pending" style="--chip-color:#FB8C00;">⏳ Pending</button>
+                    <button class="sched-chip" data-filter="completed" style="--chip-color:#43A047;">✅ Completed</button>
+                </div>
+
+                <!-- Visit Cards Container -->
+                <div id="schedule-cards-list"></div>
+                <p id="schedule-empty" class="hidden" style="text-align:center; color:#aaa; padding:30px 0; font-size:15px;">No visits found.</p>
             </div>
+
             
             <div id="vet-search-onboard" class="glass-card" style="padding: 15px;">
                 <h3 data-i18n="search_cattle">Search & Onboard Cattle</h3>
@@ -152,10 +268,15 @@
             </div>
         </div>
         
-        <div id="vet-recent-treatments">
-           <h3 style="margin-top: 30px;" data-i18n="recent_treatments">Recent Treatments</h3>
-           <div id="vet-treatments-list"></div>
+        <div id="vet-recent-treatments" class="glass-card" style="padding:20px; margin-top:24px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:10px;">
+                <h3 data-i18n="recent_treatments" style="margin:0; font-size:18px; font-weight:700; color:var(--primary);">🩺 Recent Treatments</h3>
+                <span id="tx-count-badge" style="background:var(--primary); color:#fff; font-size:12px; font-weight:700; padding:4px 12px; border-radius:20px;"></span>
+            </div>
+            <div id="tx-list"></div>
+            <p id="tx-empty" class="hidden" style="text-align:center;color:#aaa;padding:30px 0;font-size:15px;">No treatment records found.</p>
         </div>
+
     </main>
 
     <!-- Cattle Profile View -->
@@ -179,36 +300,178 @@
         </div>
     </main>
 
-    <!-- Admin Portal -->
-    <main id="admin-portal" class="page hidden">
-        <h2>Admin Dashboard</h2>
+    <!-- Admin Portal (Global Command Center) -->
+    <main id="admin-portal" class="page hidden" style="padding: 0; display: flex; align-items: stretch; min-height: calc(100vh - 80px);">
         
-        <div class="glass-card" style="margin-bottom: 20px; text-align: center;">
-            <p><strong>Overview:</strong> <span id="admin-stats">Loading stats...</span></p>
-        </div>
+        <!-- Sidebar -->
+        <aside id="admin-sidebar" class="admin-sidebar glass-card" style="width: 260px; border-radius: 0 12px 12px 0; display: flex; flex-direction: column; gap: 10px; padding: 25px 20px; margin: 20px 20px 20px 0; overflow-y: auto;">
+            <h3 style="color: var(--primary); margin-bottom: 20px; font-size: 1.2rem; border-bottom: 2px solid var(--primary); padding-bottom: 10px;">Command Center</h3>
+            <button class="admin-nav-btn btn-primary active" data-target="admin-section-dashboard" style="text-align: left; padding: 12px; border: none; font-weight: bold; width: 100%;">📊 Dashboard</button>
+            <button class="admin-nav-btn btn-secondary" data-target="admin-section-users" style="text-align: left; padding: 12px; border: none; font-weight: bold; width: 100%;">👥 User Management</button>
+            <button class="admin-nav-btn btn-secondary" data-target="admin-section-treatments" style="text-align: left; padding: 12px; border: none; font-weight: bold; width: 100%;">🏥 Global Treatments</button>
+            <button class="admin-nav-btn btn-secondary" data-target="admin-section-approvals" style="text-align: left; padding: 12px; border: none; font-weight: bold; width: 100%;">✅ Approval Queue</button>
+            <button class="admin-nav-btn btn-secondary" data-target="admin-section-settings" style="text-align: left; padding: 12px; border: none; font-weight: bold; width: 100%;">⚙️ System Settings</button>
+        </aside>
 
-        <div style="display:flex; gap:10px; margin-bottom: 20px; overflow-x:auto; padding-bottom:5px;">
-            <button class="btn-secondary" id="filter-pending">Pending</button>
-            <button class="btn-secondary" id="filter-approved">Approved</button>
-            <button class="btn-secondary" id="filter-rejected">Rejected</button>
-            <button class="btn-secondary" id="filter-deletions" style="border-color:#F44336; color:#F44336;">Deletions</button>
-        </div>
+        <!-- Main Content Area -->
+        <div id="admin-main-content" style="flex: 1; padding: 20px 20px 20px 0; overflow-y: auto;">
+            
+            <!-- Dashboard (Overview) -->
+            <section id="admin-section-dashboard" class="admin-section">
+                <h2 style="color: var(--primary); margin-bottom: 20px;">System Overview</h2>
+                
+                <!-- KPI Cards -->
+                <div class="stats-row" style="display: flex; gap: 15px; margin-bottom: 30px; overflow-x: auto; padding-bottom: 5px;">
+                    <div class="glass-card stat-card" style="flex: 1; min-width: 140px; text-align: center; padding: 20px;">
+                        <h4 style="margin: 0; color: #555; font-size: 14px; text-transform: uppercase;">Registered Vets</h4>
+                        <p id="admin-kpi-vets" style="font-size: 32px; font-weight: bold; color: var(--primary); margin: 5px 0 0;">--</p>
+                    </div>
+                    <div class="glass-card stat-card" style="flex: 1; min-width: 140px; text-align: center; padding: 20px;">
+                        <h4 style="margin: 0; color: #555; font-size: 14px; text-transform: uppercase;">Registered Farmers</h4>
+                        <p id="admin-kpi-farmers" style="font-size: 32px; font-weight: bold; color: #1976D2; margin: 5px 0 0;">--</p>
+                    </div>
+                    <div class="glass-card stat-card" style="flex: 1; min-width: 140px; text-align: center; padding: 20px;">
+                        <h4 style="margin: 0; color: #555; font-size: 14px; text-transform: uppercase;">Total Cattle</h4>
+                        <p id="admin-kpi-cattle" style="font-size: 32px; font-weight: bold; color: #388E3C; margin: 5px 0 0;">--</p>
+                    </div>
+                    <div class="glass-card stat-card" style="flex: 1; min-width: 140px; text-align: center; padding: 20px;">
+                        <h4 style="margin: 0; color: #555; font-size: 14px; text-transform: uppercase;">Pending Approvals</h4>
+                        <p id="admin-kpi-pending" style="font-size: 32px; font-weight: bold; color: #E65100; margin: 5px 0 0;">--</p>
+                    </div>
+                </div>
 
-        <div class="card-list" id="admin-treatments-list">
-            <!-- Populated via JS -->
-            <p>Loading pending treatments...</p>
+                <!-- System Broadcast -->
+                <div class="glass-card" style="margin-bottom: 30px;">
+                    <h3 style="color: #333; margin-bottom: 15px; font-size: 18px;">📢 System Broadcast</h3>
+                    <p style="color: #666; font-size: 14px; margin-bottom: 15px;">Send a global alert to all active users. This will appear as a banner in their dashboard.</p>
+                    <div class="form-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <input type="text" id="admin-broadcast-msg" placeholder="Enter broadcast message here..." style="flex: 1; min-width: 250px; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px;">
+                        <button id="btn-admin-broadcast" class="btn-primary" style="padding: 12px 24px; white-space: nowrap;">Send Alert</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- User Management -->
+            <section id="admin-section-users" class="admin-section hidden" style="display: none;">
+                <h2 style="color: var(--primary); margin-bottom: 20px;">User Management</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
+                    <div style="display:flex; gap:10px;">
+                        <button class="btn-secondary" id="toggle-list-vets" style="border-color: var(--primary); color: var(--primary);">🩺 Vets</button>
+                        <button class="btn-secondary" id="toggle-list-farmers">🌾 Farmers</button>
+                    </div>
+                    <button id="btn-add-new-user" class="btn-primary">➕ Add New User</button>
+                </div>
+                
+                <div class="glass-card" style="padding: 0; overflow: hidden;">
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 600px;">
+                            <thead style="background: rgba(45, 106, 79, 0.1); border-bottom: 2px solid rgba(45, 106, 79, 0.2);">
+                                <tr>
+                                    <th style="padding: 15px; color: var(--primary);">Name / Email</th>
+                                    <th style="padding: 15px; color: var(--primary);">Role</th>
+                                    <th style="padding: 15px; color: var(--primary);">Status</th>
+                                    <th style="padding: 15px; color: var(--primary); text-align: right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-users-table-body">
+                                <tr><td colspan="4" style="padding: 20px; text-align: center;">Loading users...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Global Treatments -->
+            <section id="admin-section-treatments" class="admin-section hidden" style="display: none;">
+                <h2 style="color: var(--primary); margin-bottom: 20px;">Global Treatments <span style="font-size: 0.6em; color: #666; font-weight: normal;">(Admin Audit View)</span></h2>
+                
+                <div class="glass-card" style="margin-bottom: 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="admin-search-treatments" placeholder="Search by Farmer, Vet, Tag ID, or Diagnosis..." style="flex: 1; min-width: 250px; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px;">
+                    <select id="admin-filter-status" style="padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; min-width: 150px;">
+                        <option value="all">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
+                </div>
+
+                <div class="card-list" id="admin-global-treatments-list">
+                    <p style="text-align: center; color: #666; padding: 20px;">Loading treatments...</p>
+                </div>
+            </section>
+
+            <!-- Approval Queue -->
+            <section id="admin-section-approvals" class="admin-section hidden" style="display: none;">
+                <h2 style="color: var(--primary); margin-bottom: 20px;">Approval Queue</h2>
+                <p style="color: #666; margin-bottom: 20px;">Review user update requests, new Vet licenses, and system overrides.</p>
+                
+                <div class="card-list" id="admin-approval-queue-list">
+                    <p style="text-align: center; color: #666; padding: 20px;">Loading pending approvals...</p>
+                </div>
+            </section>
+
+            <!-- System Settings -->
+            <section id="admin-section-settings" class="admin-section hidden" style="display: none;">
+                <h2 style="color: var(--primary); margin-bottom: 20px;">System Settings</h2>
+                <div class="glass-card">
+                    <h3 style="color: #333; margin-bottom: 15px; font-size: 18px;">Basic Configuration</h3>
+                    <p style="color: #666;">This section is reserved for future global configurations (e.g., API keys, maintenance mode toggles).</p>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                    <button class="btn-secondary" disabled>Enable Maintenance Mode</button>
+                </div>
+            </section>
         </div>
     </main>
 
     <!-- Farmer Portal -->
     <main id="farmer-portal" class="page hidden">
-        <h2>Farmer Dashboard</h2>
-        <button id="btn-emergency-sos" class="btn-danger" style="margin-bottom:20px;">🚨 Emergency SOS</button>
+        <h2 style="color: var(--primary); margin-bottom: 20px;">Farmer Dashboard</h2>
         
-        <h3 style="margin-top:20px;">My Herd's Health</h3>
-        <div class="card-list" id="farmer-herd-list">
-            <!-- Populated via JS -->
-        </div>
+        <!-- Section 1: Command Center -->
+        <section class="dashboard-section" style="margin-bottom: 30px;">
+            <div class="stats-row" style="display: flex; gap: 15px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 5px;">
+                <div class="glass-card stat-card" style="flex: 1; min-width: 110px; text-align: center; padding: 15px;">
+                    <h4 style="margin: 0; color: #555; font-size: 13px; text-transform: uppercase;">Total Herd</h4>
+                    <p id="stat-herd-size" style="font-size: 26px; font-weight: bold; color: var(--primary); margin: 5px 0 0;">--</p>
+                </div>
+                <div class="glass-card stat-card" style="flex: 1; min-width: 110px; text-align: center; padding: 15px;">
+                    <h4 style="margin: 0; color: #555; font-size: 13px; text-transform: uppercase;">Active Treatments</h4>
+                    <p id="stat-active-treatments" style="font-size: 26px; font-weight: bold; color: #E65100; margin: 5px 0 0;">--</p>
+                </div>
+                <div class="glass-card stat-card" style="flex: 1; min-width: 110px; text-align: center; padding: 15px;">
+                    <h4 style="margin: 0; color: #555; font-size: 13px; text-transform: uppercase;">Upcoming Visits</h4>
+                    <p id="stat-upcoming-visits" style="font-size: 26px; font-weight: bold; color: #1976D2; margin: 5px 0 0;">--</p>
+                </div>
+            </div>
+
+            <div class="action-row" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button id="btn-emergency-sos" class="btn-danger" style="flex: 1; min-width: 140px; padding: 14px; font-weight: bold; font-size: 14px;">🚨 Emergency SOS</button>
+                <button id="btn-request-visit" class="btn-primary" style="flex: 1; min-width: 140px; padding: 14px; font-weight: bold; font-size: 14px; background: #1976D2;">📅 Request Vet Visit</button>
+                <button id="btn-register-animal-farmer" class="btn-secondary" style="flex: 1; min-width: 140px; padding: 14px; font-weight: bold; font-size: 14px; border: 2px solid var(--primary); text-align: center; display: inline-block;">➕ Register New Animal</button>
+            </div>
+        </section>
+
+        <!-- Section 2: Search, Filters & Alerts -->
+        <section class="dashboard-section" style="margin-bottom: 30px;">
+            <div class="alert-banner" style="background: #FFF3E0; color: #E65100; padding: 12px 15px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: flex-start; gap: 10px; font-weight: 500; font-size: 14px; border-left: 4px solid #FF9800; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <span style="font-size: 18px;">⚠️</span>
+                <span><strong>Reminder:</strong> Upcoming Foot & Mouth Vaccinations due next week for 12 cattle.</span>
+            </div>
+            
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="search-tag-id" placeholder="🔍 Search Cattle by Tag ID..." style="flex: 1; padding: 12px 15px; border-radius: 20px; border: 1px solid #ddd; outline: none; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); font-family: inherit; font-size: 15px;">
+                <button id="btn-download-report" class="btn-secondary" style="padding: 10px; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);" title="Download Health Report">📥</button>
+            </div>
+        </section>
+
+        <!-- Section 3: My Herd's Health Records -->
+        <section class="dashboard-section" style="margin-bottom: 30px;">
+            <h3 style="color: var(--primary); margin-bottom: 15px; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; font-size: 18px;">My Herd's Health Records</h3>
+            <div id="treatments-container" class="accordion-list" style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- Populated via JS -->
+                <p style="text-align:center; color:#777; padding: 20px;">Fetching live health records...</p>
+            </div>
+        </section>
 
         <div id="sos-modal" class="modal hidden">
             <div class="modal-content glass-card">
@@ -286,12 +549,204 @@
                 <button type="button" id="btn-close-modal" class="btn-secondary" data-i18n="cancel">Cancel</button>
             </form>
         </div>
-    </div>form>
-        </div>
     </div>
 
+    <!-- ══════════════════════════════════════════
+         MY PROFILE & SETTINGS PAGE
+    ══════════════════════════════════════════ -->
+    <main id="my-profile" class="page hidden">
+
+        <!-- Sticky Action Bar -->
+        <div class="prof-action-bar">
+            <span style="font-size:17px; font-weight:700; color:var(--primary);">👤 My Profile & Settings</span>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-secondary prof-cancel-btn" style="padding:10px 22px; min-width:90px;" onclick="window.showPage(window.currentRole || 'vet-portal')">Cancel</button>
+                <button class="btn-primary prof-save-btn" style="padding:10px 22px; min-width:130px;" onclick="saveProfile()">💾 Save Profile</button>
+            </div>
+        </div>
+
+        <div class="prof-page-body">
+
+            <!-- ── Avatar Card ───────────────────────────── -->
+            <div class="prof-avatar-card glass-card">
+                <div class="prof-avatar-wrap" id="prof-avatar-wrap">
+                    <div class="prof-avatar-circle" id="prof-avatar-circle">🩺</div>
+                    <label class="prof-avatar-overlay" for="prof-avatar-file">
+                        📷<span>Edit Picture</span>
+                    </label>
+                    <input type="file" id="prof-avatar-file" accept="image/*" style="display:none;">
+                </div>
+                <div style="text-align:center; margin-top:14px;">
+                    <p id="prof-display-name" style="font-size:20px; font-weight:800; color:#1a1a1a; margin:0 0 6px;">Dr. Loading...</p>
+                    <span class="prof-status-badge">✅ Account Active &amp; Verified</span>
+                </div>
+            </div>
+
+            <div class="prof-grid">
+
+                <!-- ── Card 1: Personal Information ─────── -->
+                <div class="glass-card prof-card">
+                    <div class="prof-card-header">👤 Personal Information</div>
+                    <div class="prof-form-grid">
+                        <div class="prof-field">
+                            <label class="prof-label">First Name</label>
+                            <input type="text" id="prof-first-name" class="prof-input" placeholder="First name">
+                        </div>
+                        <div class="prof-field">
+                            <label class="prof-label">Last Name</label>
+                            <input type="text" id="prof-last-name" class="prof-input" placeholder="Last name">
+                        </div>
+                        <div class="prof-field">
+                            <label class="prof-label">Date of Birth</label>
+                            <input type="date" id="prof-dob" class="prof-input" onchange="calcAge()">
+                        </div>
+                        <div class="prof-field">
+                            <label class="prof-label">Age (auto-calculated)</label>
+                            <input type="text" id="prof-age" class="prof-input prof-readonly" readonly placeholder="—">
+                        </div>
+                        <div class="prof-field" style="grid-column:1/-1;">
+                            <label class="prof-label">Gender</label>
+                            <select id="prof-gender" class="prof-input">
+                                <option value="">Select gender</option>
+                                <option value="male">Male</option>
+                                <option value="female">Female</option>
+                                <option value="other">Other / Prefer not to say</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Card 2: Professional Details (VET) ──────── -->
+                <div id="prof-card-vet" class="glass-card prof-card">
+                    <div class="prof-card-header">🩺 Professional &amp; Medical Details</div>
+                    <div class="prof-form-grid">
+                        <div class="prof-field">
+                            <label class="prof-label">Vet License Number</label>
+                            <input type="text" id="prof-license" class="prof-input" placeholder="e.g., VCI-2024-GJ-00312">
+                        </div>
+                        <div class="prof-field">
+                            <label class="prof-label">Years of Experience</label>
+                            <input type="number" id="prof-experience" class="prof-input" placeholder="e.g., 8" min="0" max="60">
+                        </div>
+                        <div class="prof-field" style="grid-column:1/-1;">
+                            <label class="prof-label">Specialization</label>
+                            <select id="prof-specialization" class="prof-input">
+                                <option value="">Select specialization</option>
+                                <option value="large_animal">Large Animal Medicine</option>
+                                <option value="bovine">Bovine Reproduction</option>
+                                <option value="theriogenology">Theriogenology</option>
+                                <option value="surgery">Veterinary Surgery</option>
+                                <option value="pathology">Veterinary Pathology</option>
+                                <option value="general">General Practice</option>
+                            </select>
+                        </div>
+                        <div class="prof-field" style="grid-column:1/-1;">
+                            <label class="prof-label">Medical Degrees &amp; Qualifications</label>
+                            <input type="text" id="prof-degrees" class="prof-input" placeholder="e.g., BVSc &amp; AH, MVSc (Bovine Medicine)">
+                        </div>
+                        <div class="prof-field" style="grid-column:1/-1;">
+                            <label class="prof-label">Clinic / Hospital Name</label>
+                            <input type="text" id="prof-clinic" class="prof-input" placeholder="e.g., Green Valley Veterinary Clinic">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Card 2: Farm & Livestock Details (FARMER) ──────── -->
+                <div id="prof-card-farmer" class="glass-card prof-card hidden">
+                    <div class="prof-card-header">🚜 Farm &amp; Livestock Details</div>
+                    <div class="prof-form-grid">
+                        <div class="prof-field" style="grid-column:1/-1;">
+                            <label class="prof-label">Farm/Ranch Name</label>
+                            <input type="text" id="prof-farm-name" class="prof-input" placeholder="e.g., Sunrise Dairy Farm">
+                        </div>
+                        <div class="prof-field">
+                            <label class="prof-label">Total Land Area (Acres)</label>
+                            <input type="number" id="prof-farm-area" class="prof-input" placeholder="e.g., 50" min="0">
+                        </div>
+                        <div class="prof-field">
+                            <label class="prof-label">Total Herd/Flock Size</label>
+                            <input type="number" id="prof-farm-size" class="prof-input" placeholder="e.g., 120" min="0">
+                        </div>
+                        <div class="prof-field" style="grid-column:1/-1;">
+                            <label class="prof-label">Primary Livestock Type</label>
+                            <select id="prof-livestock-type" class="prof-input">
+                                <option value="">Select primary livestock</option>
+                                <option value="dairy_cattle">Dairy Cattle</option>
+                                <option value="beef_cattle">Beef Cattle</option>
+                                <option value="poultry">Poultry</option>
+                                <option value="mixed">Mixed</option>
+                            </select>
+                        </div>
+                        <div class="prof-field" style="grid-column:1/-1;">
+                            <label class="prof-label">Assigned/Primary Veterinarian</label>
+                            <input type="text" id="prof-primary-vet" class="prof-input" placeholder="e.g., Dr. Ramesh Patel" readonly style="background:#f5f5f5; cursor:not-allowed;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Card 2: Administrative Access (ADMIN) ──────── -->
+                <div id="prof-card-admin" class="glass-card prof-card hidden">
+                    <div class="prof-card-header">🛡️ Administrative Access</div>
+                    <div class="prof-form-grid">
+                        <div class="prof-field" style="grid-column:1/-1;">
+                            <label class="prof-label">Employee / Admin ID</label>
+                            <input type="text" id="prof-admin-id" class="prof-input" placeholder="e.g., ADM-00129" readonly style="background:#f5f5f5; cursor:not-allowed;">
+                        </div>
+                        <div class="prof-field" style="grid-column:1/-1;">
+                            <label class="prof-label">System Role Level</label>
+                            <select id="prof-admin-role" class="prof-input">
+                                <option value="">Select role level</option>
+                                <option value="super_admin">Super Admin</option>
+                                <option value="regional_manager">Regional Manager</option>
+                                <option value="support_staff">Support Staff</option>
+                            </select>
+                        </div>
+                        <div class="prof-field">
+                            <label class="prof-label">Region/Territory Managed</label>
+                            <input type="text" id="prof-admin-region" class="prof-input" placeholder="e.g., Gujarat North">
+                        </div>
+                        <div class="prof-field">
+                            <label class="prof-label">Primary Department</label>
+                            <input type="text" id="prof-admin-dept" class="prof-input" placeholder="e.g., User Support">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Card 3: Contact & Location ────────── -->
+                <div class="glass-card prof-card">
+                    <div class="prof-card-header">📞 Contact &amp; Location</div>
+                    <div class="prof-form-grid">
+                        <div class="prof-field">
+                            <label class="prof-label">Primary Email</label>
+                            <input type="email" id="prof-email" class="prof-input" placeholder="you@example.com">
+                        </div>
+                        <div class="prof-field">
+                            <label class="prof-label">Mobile Number</label>
+                            <input type="tel" id="prof-mobile" class="prof-input" placeholder="+91 98765 43210">
+                        </div>
+                        <div class="prof-field">
+                            <label class="prof-label">Clinic Phone</label>
+                            <input type="tel" id="prof-clinic-phone" class="prof-input" placeholder="+91 02692 XXXXXX">
+                        </div>
+                        <div class="prof-field" style="grid-column:1/-1;">
+                            <label class="prof-label">Full Clinic Address</label>
+                            <textarea id="prof-address" class="prof-input prof-textarea" rows="3" placeholder="Street, City, State, PIN"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+
+
+
+            </div><!-- /prof-grid -->
+        </div><!-- /prof-page-body -->
+    </main>
+
     <!-- Firebase JS (Modular) -->
-    <script type="module" src="js/app.js"></script>
+
+    <script type="module" src="js/app.js?v=27"></script>
+    <script type="module" src="js/dashboard.js?v=27"></script>
+    <script type="module" src="js/admin-dashboard.js?v=27"></script>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </body>
 </html>

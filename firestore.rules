@@ -2,20 +2,32 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
+    function getDocRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
     function isAdmin() {
-      return request.auth != null && request.auth.token.role == 'admin';
+      return request.auth != null && (
+        ('role' in request.auth.token && request.auth.token.role == 'admin') ||
+        getDocRole() == 'admin'
+      );
     }
     
     function isVet() {
-      return request.auth != null && request.auth.token.role == 'vet';
+      return request.auth != null && (
+        ('role' in request.auth.token && request.auth.token.role == 'vet') ||
+        getDocRole() == 'vet'
+      );
     }
     
     function isFarmer() {
-      return request.auth != null && request.auth.token.role == 'farmer';
+      return request.auth != null && (
+        ('role' in request.auth.token && request.auth.token.role == 'farmer') ||
+        getDocRole() == 'farmer'
+      );
     }
 
     match /users/{userId} {
-      // Note: allow public read to enable phone number mapping querying on unauthenticated login.
       allow read: if true;
       allow write: if request.auth.uid == userId || isAdmin();
     }
@@ -27,8 +39,7 @@ service cloud.firestore {
     }
 
     match /treatments/{treatmentId} {
-      allow create: if isVet();
-      // Allow vet to request deletion or update pending status
+      allow create: if isVet() || isAdmin();
       allow update: if isAdmin() || (isVet() && resource.data.vetId == request.auth.uid);
       allow read: if isVet() || isAdmin() || (isFarmer() && resource.data.farmerId == request.auth.uid);
       allow delete: if isAdmin();
@@ -38,6 +49,12 @@ service cloud.firestore {
       allow create: if isFarmer() && request.resource.data.farmerId == request.auth.uid;
       allow read, update: if isVet() || isAdmin() || (isFarmer() && resource.data.farmerId == request.auth.uid);
       allow delete: if isAdmin();
+    }
+
+    match /update_requests/{requestId} {
+      allow create: if isAdmin() || (request.auth != null && request.resource.data.userId == request.auth.uid);
+      allow read: if isAdmin() || (request.auth != null && resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
     }
   }
 }

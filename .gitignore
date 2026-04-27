@@ -4,3 +4,16 @@ firebase-debug.log*
 login_output*.txt
 serviceAccountKey.json
 .DS_Store
+.firebase/
+
+# Flutter/Dart
+**/doc/api/
+**/ios/Flutter/.last_build_id
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/.pub-cache/
+**/.pub/
+**/build/
+**/pubspec.lock

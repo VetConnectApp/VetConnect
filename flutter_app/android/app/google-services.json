@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "632357327788",
+    "project_id": "vetconnect-rural-2026-v1",
+    "storage_bucket": "vetconnect-rural-2026-v1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:632357327788:android:d19480054a098f9affa009",
+        "android_client_info": {
+          "package_name": "com.example.flutter_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "632357327788-gn1qaot0cegrj8cfa03padv11fe9ge82.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDYxOu0zRsfe9dQUgS-8xl9biSRe9Y20fY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "632357327788-gn1qaot0cegrj8cfa03padv11fe9ge82.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "632357327788-2rgkmmqihr2bv2qo8bvotisc5msj4lh5.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.flutterApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
